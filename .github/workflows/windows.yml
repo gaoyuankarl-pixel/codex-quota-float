@@ -1,0 +1,62 @@
+name: Windows build
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Build and run synthetic tests
+        shell: powershell
+        run: .\build.ps1
+      - name: Package clean release
+        shell: powershell
+        run: .\package.ps1
+      - uses: actions/upload-artifact@v7
+        with:
+          name: windows-x64
+          path: |
+            releases/*.zip
+            releases/SHA256SUMS.txt
+          if-no-files-found: error
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Verify version tag
+        shell: powershell
+        run: |
+          $source = Get-Content src/Program.cs -Raw
+          $version = [regex]::Match($source,'public const string Version="([0-9.]+)"').Groups[1].Value
+          if ($env:GITHUB_REF_NAME -ne ('v' + $version)) { throw 'Tag and application version differ.' }
+      - uses: actions/download-artifact@v8
+        with:
+          name: windows-x64
+          path: releases
+      - name: Publish release assets
+        shell: powershell
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $assets = (Get-ChildItem releases -File).FullName
+          gh release view $env:GITHUB_REF_NAME *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $env:GITHUB_REF_NAME @assets --clobber
+          } else {
+            gh release create $env:GITHUB_REF_NAME @assets --verify-tag --title "Codex Quota Float $env:GITHUB_REF_NAME" --notes-file CHANGELOG.md
+          }
+          if ($LASTEXITCODE -ne 0) { throw 'Release publishing failed.' }

@@ -1,0 +1,15 @@
+app/data/
+app/*.exe
+app/test-results.txt
+work/
+releases/
+*.user
+*.suo
+*.tmp
+.vs/
+.idea/
+*.zip
+**/data/
+AGENTS.md
+docs/local-validation.md
+VALIDATION.md
